@@ -40,7 +40,7 @@ type SharedFile struct {
 type UserPermission map[string]int
 
 type AuthDatabase struct {
-	Filename     string
+	Filename     string                    `json:"-"`
 	Admin        []string                  `json:"admin"`
 	Users        map[string]string         `json:"users"`
 	Sessions     map[string]Session        `json:"sessions"`
