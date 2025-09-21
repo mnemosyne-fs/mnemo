@@ -23,6 +23,7 @@ const (
 	USER_EXISTS
 	USER_DOESNT_EXIST
 	INVALID_LOGIN
+	INVALID_SESSION
 )
 
 type Session struct {
@@ -147,11 +148,12 @@ func (d *AuthDatabase) CheckSessionTime(session_token string) bool {
 	return time_inactive <= SESSION_LIFETIME
 }
 
-func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed bool) {
+func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed bool) InternalResponseCode {
 	is_alive := d.CheckSessionTime(session_token)
 	if !is_alive {
 		delete(d.Sessions, session_token)
 		d.Save()
+		return INVALID_SESSION
 	}
 
 	if recently_accessed {
@@ -164,6 +166,8 @@ func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed boo
 		d.Sessions[session_token] = new_session
 		d.Save()
 	}
+
+	return SUCCESS
 }
 
 func (d *AuthDatabase) CreateUser(username string) InternalResponseCode {
@@ -187,10 +191,21 @@ func (d *AuthDatabase) RemoveUser(username string) InternalResponseCode {
 		return USER_DOESNT_EXIST
 	}
 	delete(d.Users, username)
+
+	for session_token, value := range d.Sessions {
+		if value.Username == username {
+			delete(d.Sessions, session_token)
+			break
+		}
+	}
+
 	return SUCCESS
 }
 
 func (d *AuthDatabase) LoginUser(username string, password string) (string, InternalResponseCode, error) {
+	if _, exists := d.Users[username]; !exists {
+		return "", USER_DOESNT_EXIST, nil
+	}
 	if !d.CheckAuth(username, password) {
 		return "", INVALID_LOGIN, nil
 	}
