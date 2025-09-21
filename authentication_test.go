@@ -19,7 +19,7 @@ func (suite *DatabaseTestSuite) SetupTest() {
 	suite.filename = "authTemplate.json"
 	suite.Database, err = LoadAuthDatabase(suite.filename)
 
-	assert.Equal(suite.T(), nil, err)
+	assert.Nil(suite.T(), err)
 }
 
 func (suite *DatabaseTestSuite) TestLoad() {
@@ -40,6 +40,11 @@ func (suite *DatabaseTestSuite) TestLoad() {
 	assert.Equal(suite.T(), templateSessions, suite.Database.Sessions)
 	assert.Equal(suite.T(), templateSharedFiles, suite.Database.Shared_files)
 	assert.Equal(suite.T(), templateUsers, suite.Database.Users)
+
+	// Try to load a database that doesn't exist
+	failingDatabase, err := LoadAuthDatabase("failingDatabase.json")
+	assert.NotNil(suite.T(), err)
+	assert.Nil(suite.T(), failingDatabase)
 }
 
 func (suite *DatabaseTestSuite) TestCreation() {
@@ -53,17 +58,76 @@ func (suite *DatabaseTestSuite) TestCreation() {
 }
 
 func (suite *DatabaseTestSuite) TestAccountOperations() {
-	testingDatabase, err := CreateAuthDatabase("testingDatabase.json")
-	assert.Equal(suite.T(), nil, err)
+	// Test creation
+	username := "test2"
+	password := "password"
+	return_code := suite.Database.CreateUser(username)
+	assert.Contains(suite.T(), suite.Database.Users, username)
+	assert.Equal(suite.T(), SUCCESS, return_code)
 
-	newUser := make(map[string]string)
-	newUser["test"] = "test"
+	// Test creation of an existing user
+	return_code = suite.Database.CreateUser(username)
+	assert.Equal(suite.T(), USER_EXISTS, return_code)
 
-	testingDatabase.CreateUser("test")
-	assert.Contains(suite.T(), testingDatabase.Users, "test")
+	// Test logging in with incorrect password
+	session_token, return_code, error := suite.Database.LoginUser(username, password)
+	assert.Equal(suite.T(), "", session_token)
+	assert.Equal(suite.T(), INVALID_LOGIN, return_code)
+	assert.Nil(suite.T(), error)
 
-	testingDatabase.RemoveUser("test")
-	assert.NotContains(suite.T(), testingDatabase.Users, "test")
+	// Test logging in
+	session_token, return_code, error = suite.Database.LoginUser(username, username)
+	assert.Contains(suite.T(), suite.Database.Users, username)
+	assert.Contains(suite.T(), suite.Database.Sessions, session_token)
+	assert.Equal(suite.T(), SUCCESS, return_code)
+	assert.Nil(suite.T(), error)
+
+	// Test session validation
+	assert.True(suite.T(), suite.Database.ValidateToken(session_token, username))
+	assert.False(suite.T(), suite.Database.ValidateToken(session_token, password))
+	new_token, error := suite.Database.GetSessionToken(username)
+	assert.Nil(suite.T(), error)
+	assert.Equal(suite.T(), new_token, session_token)
+
+	// Test authentication checking
+	assert.True(suite.T(), suite.Database.CheckAuth(username, username))
+	assert.False(suite.T(), suite.Database.CheckAuth(password, username))
+
+	// Test session updating
+	return_code = suite.Database.UpdateSession(session_token, true)
+	assert.Equal(suite.T(), SUCCESS, return_code)
+	return_code = suite.Database.UpdateSession(session_token, false)
+	assert.Equal(suite.T(), SUCCESS, return_code)
+
+	// Test expired session
+	suite.Database.CreateUser(password)
+	new_token, _ = suite.Database.GetSessionToken(password)
+	new_session := Session{
+		username,
+		0,
+	}
+	suite.Database.Sessions[new_token] = new_session
+	return_code = suite.Database.UpdateSession(new_token, false)
+	assert.Equal(suite.T(), INVALID_SESSION, return_code)
+	assert.NotContains(suite.T(), suite.Database.Sessions, new_token)
+	suite.Database.RemoveUser(password)
+
+	// Test removal
+	return_code = suite.Database.RemoveUser(username)
+	assert.NotContains(suite.T(), suite.Database.Users, username)
+	assert.NotContains(suite.T(), suite.Database.Sessions, session_token)
+	assert.Equal(suite.T(), SUCCESS, return_code)
+	suite.Database.Save()
+
+	// Test logging into account that doesn't exist
+	session_token, return_code, error = suite.Database.LoginUser(username, username)
+	assert.Equal(suite.T(), "", session_token)
+	assert.Equal(suite.T(), USER_DOESNT_EXIST, return_code)
+	assert.Nil(suite.T(), error)
+
+	// Test removal of account that doesn't exist
+	return_code = suite.Database.RemoveUser(username)
+	assert.Equal(suite.T(), USER_DOESNT_EXIST, return_code)
 }
 
 func TestDatabaseTestSuite(t *testing.T) {
