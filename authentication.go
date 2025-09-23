@@ -93,6 +93,32 @@ func (d *AuthDatabase) CheckAuth(username string, password string) bool {
 	return saved_password == password
 }
 
+func (d *AuthDatabase) CheckUserExists(username string) bool {
+	_, ok := d.Users[username]
+	return ok
+}
+
+func (d *AuthDatabase) GenerateNewSessionToken(username string) (string, error) {
+	if !d.CheckUserExists(username) {
+		return "", USER_DOESNT_EXIST
+	}
+	// No session token found, need to create one
+	new_token := d.CreateSessionToken(username)
+	new_session := Session{
+		Username:   username,
+		Last_login: int(time.Now().Unix()),
+	}
+	d.Sessions[new_token] = new_session
+
+	// Save the new session to the database
+	err := d.Save()
+	if err != nil {
+		return "", err
+	}
+
+	return new_token, nil
+}
+
 func (d *AuthDatabase) CreateSessionToken(username string) string {
 	var id string
 	for {
@@ -113,29 +139,13 @@ func (d *AuthDatabase) GetSessionToken(username string) (string, error) {
 		}
 	}
 
-	// No session token found, need to create one
-	new_token := d.CreateSessionToken(username)
-	new_session := Session{
-		Username:   username,
-		Last_login: int(time.Now().Unix()),
-	}
-	d.Sessions[new_token] = new_session
-
-	// Save the new session to the database
-	err := d.Save()
-	if err != nil {
-		return "", err
-	}
-
-	return new_token, nil
+	return "", nil
 }
 
-func (d *AuthDatabase) ValidateToken(session_token string, username string) bool {
-	// Returns true if the session token is valid
-	is_valid := d.Sessions[session_token].Username == username
-	is_alive := d.CheckSessionTime(session_token)
+func (d *AuthDatabase) ValidateToken(session_token string) bool {
+	_, is_valid := d.Sessions[session_token]
 
-	return is_valid && is_alive
+	return is_valid && d.CheckSessionTime(session_token)
 }
 
 func (d *AuthDatabase) CheckSessionTime(session_token string) bool {
@@ -203,10 +213,21 @@ func (d *AuthDatabase) LoginUser(username string, password string) (string, erro
 		return "", USER_DOESNT_EXIST
 	}
 	if !d.CheckAuth(username, password) {
-		return "", INVALID_LOGIN, nil
+		return "", INVALID_LOGIN
 	}
 
-	session_token, err := d.GetSessionToken(username)
+	session_token, err := d.GenerateNewSessionToken(username)
+
+	return session_token, err
+}
+
+func (d *AuthDatabase) GetUserFromToken(session_token string) (string, error) {
+	is_valid := d.ValidateToken(session_token)
+	if !is_valid {
+		return "", INVALID_SESSION
+	}
+
+	username := d.Sessions[session_token].Username
 
 	return username, nil
 }
