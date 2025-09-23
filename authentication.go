@@ -20,10 +20,6 @@ type InternalResponseCode int
 // Internal response codes
 const (
 	SUCCESS InternalResponseCode = iota
-	USER_EXISTS
-	USER_DOESNT_EXIST
-	INVALID_LOGIN
-	INVALID_SESSION
 )
 
 type Session struct {
@@ -148,7 +144,7 @@ func (d *AuthDatabase) CheckSessionTime(session_token string) bool {
 	return time_inactive <= SESSION_LIFETIME
 }
 
-func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed bool) InternalResponseCode {
+func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed bool) error {
 	is_alive := d.CheckSessionTime(session_token)
 	if !is_alive {
 		delete(d.Sessions, session_token)
@@ -167,10 +163,10 @@ func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed boo
 		d.Save()
 	}
 
-	return SUCCESS
+	return nil
 }
 
-func (d *AuthDatabase) CreateUser(username string) InternalResponseCode {
+func (d *AuthDatabase) CreateUser(username string) error {
 	// Check for an existing user with the same name
 	for key, _ := range d.Users {
 		if key == username {
@@ -181,10 +177,10 @@ func (d *AuthDatabase) CreateUser(username string) InternalResponseCode {
 	// No matching username found, create a new user with the username and password the same
 	d.Users[username] = username
 
-	return SUCCESS
+	return nil
 }
 
-func (d *AuthDatabase) RemoveUser(username string) InternalResponseCode {
+func (d *AuthDatabase) RemoveUser(username string) error {
 	// Check the user exists
 	_, ok := d.Users[username]
 	if !ok {
@@ -199,12 +195,12 @@ func (d *AuthDatabase) RemoveUser(username string) InternalResponseCode {
 		}
 	}
 
-	return SUCCESS
+	return nil
 }
 
-func (d *AuthDatabase) LoginUser(username string, password string) (string, InternalResponseCode, error) {
+func (d *AuthDatabase) LoginUser(username string, password string) (string, error) {
 	if _, exists := d.Users[username]; !exists {
-		return "", USER_DOESNT_EXIST, nil
+		return "", USER_DOESNT_EXIST
 	}
 	if !d.CheckAuth(username, password) {
 		return "", INVALID_LOGIN, nil
@@ -212,7 +208,7 @@ func (d *AuthDatabase) LoginUser(username string, password string) (string, Inte
 
 	session_token, err := d.GetSessionToken(username)
 
-	return session_token, SUCCESS, err
+	return username, nil
 }
 
 func (d *AuthDatabase) Save() error {
