@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -14,7 +13,8 @@ var (
 	ErrInvalidTag       = errors.New("tag is not valid")
 	ErrResourceNotFound = errors.New("resource does not exist")
 	ErrUploadToRoot     = errors.New("cannot write to root")
-	ErrIsFolder         = errors.New("expecting file, found folder")
+	ErrNotFile          = errors.New("expecting file, found folder")
+	ErrNotFolder        = errors.New("expecting folder, found file")
 )
 
 const filePerm = 0666
@@ -93,10 +93,26 @@ func (f *Atlas) Exists(path Path) bool {
 	return true
 }
 
-func (f *Atlas) Write(path Path) (io.Writer, error) {
-	if err := path.Validate(); err != nil {
+func (f *Atlas) List(path Path) ([]string, error) {
+	info, err := path.Stat(f)
+	if err != nil {
 		return nil, err
 	}
+
+	if !info.IsDir() {
+		return nil, ErrNotFolder
+	}
+
+	entries, err := os.ReadDir(path.Resolve(f))
+	list := make([]string, len(entries))
+	for i, entry := range entries {
+		list[i] = entry.Name()
+	}
+
+	return list, err
+}
+
+func (f *Atlas) Write(path Path) (io.Writer, error) {
 
 	if path == "" {
 		return nil, ErrUploadToRoot
@@ -127,7 +143,7 @@ func (f *Atlas) Read(path Path) (io.Reader, error) {
 
 	info, err := path.Stat(f)
 	if info.IsDir() {
-		return nil, ErrIsFolder
+		return nil, ErrNotFile
 	}
 
 	file, err := os.Open(p)
