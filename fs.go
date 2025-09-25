@@ -19,15 +19,6 @@ var (
 
 const filePerm = 0666
 
-var tag_validate = regexp.MustCompile(`^[\w\-. ]+$`)
-
-func ValidateTag(tag string) error {
-	if !tag_validate.Match([]byte(tag)) {
-		return ErrInvalidTag
-	}
-	return nil
-}
-
 func ValidatePath(path string) error {
 	clean := filepath.Clean(path)
 	if filepath.IsAbs(clean) {
