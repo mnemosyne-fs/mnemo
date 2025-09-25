@@ -13,8 +13,8 @@ import (
 var (
 	ErrInvalidTag       = errors.New("tag is not valid")
 	ErrResourceNotFound = errors.New("resource does not exist")
-	ErrUploadToRoot     = errors.New("Cannot write to root")
-	ErrIsFolder         = errors.New("Expecting file, found folder")
+	ErrUploadToRoot     = errors.New("cannot write to root")
+	ErrIsFolder         = errors.New("expecting file, found folder")
 )
 
 const filePerm = 0666
