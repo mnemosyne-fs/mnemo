@@ -25,9 +25,14 @@ type Atlas struct {
 
 // Creates new filesystem and creates basic dir structure
 func NewAtlas(root string) (*Atlas, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+
 	atlas := &Atlas{root: filepath.Join(root, "atlas")}
 
-	err := os.MkdirAll(root, dirPerm)
+	err = os.MkdirAll(root, dirPerm)
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +46,12 @@ func NewAtlas(root string) (*Atlas, error) {
 }
 
 func (a *Atlas) ResolvePath(path string) (string, error) {
-	p := filepath.Join(a.root, "fs", path)
+	path = filepath.Join(a.root, "fs", path)
 	if err := a.ValidatePath(path); err != nil {
 		return "", err
 	}
 
-	return p, nil
+	return path, nil
 }
 
 func (a *Atlas) ValidatePath(path string) error {
