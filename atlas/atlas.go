@@ -1,20 +1,11 @@
 package atlas
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-)
-
-var (
-	ErrInvalidTag       = errors.New("tag is not valid")
-	ErrResourceNotFound = errors.New("resource does not exist")
-	ErrUploadToRoot     = errors.New("cannot write to root")
-	ErrNotFile          = errors.New("expecting file, found folder")
-	ErrNotFolder        = errors.New("expecting folder, found file")
 )
 
 const dirPerm = 0777
@@ -180,6 +171,9 @@ func (a *Atlas) Read(path string) (io.Reader, error) {
 	}
 
 	info, err := os.Stat(path)
+	if err != nil {
+		return nil, ErrResourceNotFound
+	}
 	if info.IsDir() {
 		return nil, ErrNotFile
 	}

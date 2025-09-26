@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS
+atlas(
+    path TEXT PRIMARY KEY UNIQUE,
+    size INT DEFAULT 0,
+    hash TEXT NOT NULL
+);
