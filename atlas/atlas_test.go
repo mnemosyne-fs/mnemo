@@ -47,4 +47,8 @@ func TestTree(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.ElementsMatch(t, []string{"file.txt", "file2.txt", "folder/file.txt"}, tree)
+
+	assert.True(t, atlas.Exists("file.txt"))
+	assert.NoError(t, atlas.Delete("file.txt"))
+	assert.False(t, atlas.Exists("file.txt"))
 }

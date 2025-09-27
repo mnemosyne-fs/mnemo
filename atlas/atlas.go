@@ -205,14 +205,15 @@ func (a *Atlas) Read(path string) (io.Reader, error) {
 }
 
 func (a *Atlas) Delete(path string) error {
+	if !a.Exists(path) {
+		return ErrResourceNotFound
+	}
+
 	path, err := a.ResolvePath(path)
 	if err != nil {
 		return err
 	}
 
-	if !a.Exists(path) {
-		return ErrResourceNotFound
-	}
 	if err := os.RemoveAll(path); err != nil {
 		return err
 	}
