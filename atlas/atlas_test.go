@@ -11,6 +11,7 @@ import (
 
 func TestTree(t *testing.T) {
 	folder, err := os.MkdirTemp("", "atlas_*")
+	defer os.RemoveAll(folder)
 	assert.NoError(t, err)
 
 	atlas, err := NewAtlas(folder)
@@ -38,4 +39,12 @@ func TestTree(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.ElementsMatch(t, []string{"file2.txt", "file.txt"}, l)
+
+	_, err = atlas.Write("folder/file.txt")
+	assert.NoError(t, err)
+
+	tree, err := atlas.Tree("/")
+	assert.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{"file.txt", "file2.txt", "folder/file.txt"}, tree)
 }

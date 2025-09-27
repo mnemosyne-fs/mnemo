@@ -104,12 +104,8 @@ func (a *Atlas) List(path string) ([]string, error) {
 	return list, nil
 }
 
-func (a *Atlas) Tree(path string) ([]string, error) {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
-
+func (a *Atlas) tree(path string) ([]string, error) {
+	fmt.Println("path: ", path)
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -124,20 +120,42 @@ func (a *Atlas) Tree(path string) ([]string, error) {
 		return nil, err
 	}
 
-	list := make([]string, len(entries))
-	for i, entry := range entries {
-		list[i] = entry.Name()
+	list := make([]string, 0)
+	for _, entry := range entries {
 		if entry.IsDir() {
-			subpath := filepath.Join(path, entry.Name())
-			subtree, err := a.Tree(subpath)
+			subpath := entry.Name()
+			subtree, err := a.tree(filepath.Join(path, subpath))
 			if err != nil {
 				return nil, err
 			}
 			list = append(list, subtree...)
+		} else {
+			list = append(list, filepath.Join(path, entry.Name()))
 		}
 	}
 
 	return list, nil
+}
+
+func (a *Atlas) Tree(path string) ([]string, error) {
+	path, err := a.ResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := a.tree(path)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range tree {
+		tree[i], err = filepath.Rel(path, tree[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return tree, nil
 }
 
 func (a *Atlas) Write(path string) (io.Writer, error) {
