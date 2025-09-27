@@ -10,6 +10,11 @@ import (
 
 const dirPerm = 0777
 
+type FSPath struct {
+	path string // Stored as absolute path on host system
+	info os.FileInfo
+}
+
 type Atlas struct {
 	root string
 }
@@ -36,62 +41,36 @@ func NewAtlas(root string) (*Atlas, error) {
 	return atlas, nil
 }
 
-func (a *Atlas) ResolvePath(path string) (string, error) {
+func (a *Atlas) FSPath(path string) (FSPath, error) {
 	path = filepath.Join(a.root, "fs", path)
-	if err := a.ValidatePath(path); err != nil {
-		return "", err
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return FSPath{}, err
 	}
 
-	return path, nil
-}
-
-func (a *Atlas) ValidatePath(path string) error {
-	clean, err := filepath.Abs(path)
+	rel, err := filepath.Rel(a.root, abs)
 	if err != nil {
-		return err
-	}
-
-	rel, err := filepath.Rel(a.root, clean)
-	if err != nil {
-		return fmt.Errorf("cannot evaluate path: %w", err)
+		return FSPath{}, fmt.Errorf("cannot evaluate path: %w", err)
 	}
 
 	if strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("path escapes base directory: %s", path)
+		return FSPath{}, fmt.Errorf("path escapes base directory: %s", path)
 	}
 
-	return nil
+	info, err := os.Stat(abs)
+	if err != nil {
+		return FSPath{path, nil}, nil
+	}
+
+	return FSPath{path, info}, nil
 }
 
-func (a *Atlas) Exists(path string) bool {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return false
-	}
-	_, err = os.Stat(path)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
-func (a *Atlas) List(path string) ([]string, error) {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if !info.IsDir() {
+func (a *Atlas) List(path FSPath) ([]string, error) {
+	if !path.info.IsDir() {
 		return nil, ErrNotFolder
 	}
 
-	entries, err := os.ReadDir(path)
+	entries, err := os.ReadDir(path.path)
 	if err != nil {
 		return nil, err
 	}
@@ -137,19 +116,14 @@ func (a *Atlas) tree(path string) ([]string, error) {
 	return list, nil
 }
 
-func (a *Atlas) Tree(path string) ([]string, error) {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
-
-	tree, err := a.tree(path)
+func (a *Atlas) Tree(path FSPath) ([]string, error) {
+	tree, err := a.tree(path.path)
 	if err != nil {
 		return nil, err
 	}
 
 	for i := range tree {
-		tree[i], err = filepath.Rel(path, tree[i])
+		tree[i], err = filepath.Rel(path.path, tree[i])
 		if err != nil {
 			return nil, err
 		}
@@ -158,23 +132,18 @@ func (a *Atlas) Tree(path string) ([]string, error) {
 	return tree, nil
 }
 
-func (a *Atlas) Write(path string) (io.Writer, error) {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if path == a.root {
+func (a *Atlas) Write(path FSPath) (io.Writer, error) {
+	if path.path == a.root {
 		return nil, ErrUploadToRoot
 	}
 
-	err = os.MkdirAll(filepath.Dir(path), dirPerm)
+	err := os.MkdirAll(filepath.Dir(path.path), dirPerm)
 	if err != nil {
 		return nil, err
 	}
 
 	a.Delete(path)
-	file, err := os.Create(path)
+	file, err := os.Create(path.path)
 	if err != nil {
 		return nil, err
 	}
@@ -182,21 +151,12 @@ func (a *Atlas) Write(path string) (io.Writer, error) {
 	return file, nil
 }
 
-func (a *Atlas) Read(path string) (io.Reader, error) {
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, ErrResourceNotFound
-	}
-	if info.IsDir() {
+func (a *Atlas) Read(path FSPath) (io.Reader, error) {
+	if path.info.IsDir() {
 		return nil, ErrNotFile
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(path.path)
 	if err != nil {
 		return nil, err
 	}
@@ -204,17 +164,8 @@ func (a *Atlas) Read(path string) (io.Reader, error) {
 	return file, nil
 }
 
-func (a *Atlas) Delete(path string) error {
-	if !a.Exists(path) {
-		return ErrResourceNotFound
-	}
-
-	path, err := a.ResolvePath(path)
-	if err != nil {
-		return err
-	}
-
-	if err := os.RemoveAll(path); err != nil {
+func (a *Atlas) Delete(path FSPath) error {
+	if err := os.RemoveAll(path.path); err != nil {
 		return err
 	}
 
