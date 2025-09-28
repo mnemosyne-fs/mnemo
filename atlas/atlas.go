@@ -11,8 +11,8 @@ import (
 const dirPerm = 0777
 
 type FSPath struct {
-	path string // Stored as absolute path on host system
-	info os.FileInfo
+	path string      // Stored as absolute path on host system
+	info os.FileInfo // If nil, then file does not currently exist
 }
 
 type Atlas struct {
@@ -83,7 +83,7 @@ func (a *Atlas) List(path FSPath) ([]string, error) {
 	return list, nil
 }
 
-func (a *Atlas) tree(path string) ([]string, error) {
+func (a *Atlas) tree_helper(path string) ([]string, error) {
 	fmt.Println("path: ", path)
 	info, err := os.Stat(path)
 	if err != nil {
@@ -103,7 +103,7 @@ func (a *Atlas) tree(path string) ([]string, error) {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			subpath := entry.Name()
-			subtree, err := a.tree(filepath.Join(path, subpath))
+			subtree, err := a.tree_helper(filepath.Join(path, subpath))
 			if err != nil {
 				return nil, err
 			}
@@ -117,7 +117,7 @@ func (a *Atlas) tree(path string) ([]string, error) {
 }
 
 func (a *Atlas) Tree(path FSPath) ([]string, error) {
-	tree, err := a.tree(path.path)
+	tree, err := a.tree_helper(path.path)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (a *Atlas) Tree(path FSPath) ([]string, error) {
 	return tree, nil
 }
 
-func (a *Atlas) Write(path FSPath) (io.Writer, error) {
+func (a *Atlas) Writer(path FSPath) (io.Writer, error) {
 	if path.path == a.root {
 		return nil, ErrUploadToRoot
 	}
@@ -151,7 +151,7 @@ func (a *Atlas) Write(path FSPath) (io.Writer, error) {
 	return file, nil
 }
 
-func (a *Atlas) Read(path FSPath) (io.Reader, error) {
+func (a *Atlas) Reader(path FSPath) (io.Reader, error) {
 	if path.info.IsDir() {
 		return nil, ErrNotFile
 	}

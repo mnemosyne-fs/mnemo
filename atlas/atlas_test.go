@@ -19,13 +19,13 @@ func TestTree(t *testing.T) {
 
 	file, err := atlas.FSPath("file.txt")
 	assert.NoError(t, err)
-	w, err := atlas.Write(file)
+	w, err := atlas.Writer(file)
 	assert.NoError(t, err)
 	fmt.Fprint(w, "hi")
 
 	file, err = atlas.FSPath("file.txt")
 	assert.NoError(t, err)
-	r, err := atlas.Read(file)
+	r, err := atlas.Reader(file)
 	assert.NoError(t, err)
 
 	val, err := io.ReadAll(r)
@@ -40,7 +40,7 @@ func TestTree(t *testing.T) {
 
 	file2, err := atlas.FSPath("file2.txt")
 	assert.NoError(t, err)
-	_, err = atlas.Write(file2)
+	_, err = atlas.Writer(file2)
 	assert.NoError(t, err)
 
 	l, err = atlas.List(root)
@@ -50,7 +50,7 @@ func TestTree(t *testing.T) {
 
 	subfile, err := atlas.FSPath("folder/file.txt")
 	assert.NoError(t, err)
-	_, err = atlas.Write(subfile)
+	_, err = atlas.Writer(subfile)
 	assert.NoError(t, err)
 
 	tree, err := atlas.Tree(root)
