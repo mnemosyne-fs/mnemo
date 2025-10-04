@@ -1,26 +1,26 @@
-package main
+package authentication
 
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"os"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
+	"github.com/mnemosynefs/mnemo/internal"
 )
+
+//go:generate ifacemaker -f=authentication.go -s=AuthDatabase -i=Database -p=authentication -o=authentication_interface.go
+//go:generate mockery --name=Database --dir=. --output=../../mocks --outpkg=mocks --filename=database.go
 
 //go:embed authTemplate.json
-var templateDatabase string
+var TemplateDatabase string
 
 // Keep session alive for a week of inactivity
-const SESSION_LIFETIME = 604800
 
 type InternalResponseCode int
-
-// Internal response codes
-const (
-	SUCCESS InternalResponseCode = iota
-)
 
 type Session struct {
 	Username   string
@@ -43,16 +43,39 @@ type AuthDatabase struct {
 	Sessions     map[string]Session        `json:"sessions"`
 	Shared_files map[string]SharedFile     `json:"shared_files"`
 	Permissions  map[string]UserPermission `json:"permissions"`
+
+	FileOps FileInterface `json:"-"`
 }
 
-func LoadAuthDatabase(file string) (*AuthDatabase, error) {
-	databaseFile, err := os.Open(file)
+func (d *AuthDatabase) SetFileOperations(newOps FileInterface) {
+	d.FileOps = newOps
+}
+
+func CreateNewDatabase(file string, fileOps ...FileInterface) (*AuthDatabase, error) {
+	database := new(AuthDatabase)
+	if len(fileOps) > 0 {
+		database.FileOps = fileOps[0]
+	} else {
+		database.FileOps = new(FileOperations)
+	}
+
+	_, err := os.Stat(file)
+	if errors.Is(err, os.ErrNotExist) {
+		log.Warnf("Database doesn't exist at location %v. Creating new database.", file)
+		return database.CreateAuthDatabase(file)
+	}
+
+	return database.LoadAuthDatabase(file)
+}
+
+func (d *AuthDatabase) LoadAuthDatabase(file string) (*AuthDatabase, error) {
+	databaseFile, err := d.FileOps.Open(file)
 	if err != nil {
 		return nil, err
 	}
 	defer databaseFile.Close()
 
-	content, err := os.ReadFile(file)
+	content, err := d.FileOps.Read(file)
 
 	if err != nil {
 		return nil, err
@@ -65,24 +88,25 @@ func LoadAuthDatabase(file string) (*AuthDatabase, error) {
 	}
 
 	payload.Filename = file
+	payload.FileOps = d.FileOps
 
 	return &payload, nil
 }
 
-func CreateAuthDatabase(file string) (*AuthDatabase, error) {
-	f, err := os.Create(file)
+func (d *AuthDatabase) CreateAuthDatabase(file string) (*AuthDatabase, error) {
+	f, err := d.FileOps.Create(file)
 	if err != nil {
 		return nil, err
 	}
 
 	defer f.Close()
 
-	_, err = f.WriteString(templateDatabase)
+	_, err = f.WriteString(TemplateDatabase)
 	if err != nil {
 		return nil, err
 	}
 
-	return LoadAuthDatabase(file)
+	return d.LoadAuthDatabase(file)
 }
 
 func (d *AuthDatabase) CheckAuth(username string, password string) bool {
@@ -100,7 +124,7 @@ func (d *AuthDatabase) CheckUserExists(username string) bool {
 
 func (d *AuthDatabase) GenerateNewSessionToken(username string) (string, error) {
 	if !d.CheckUserExists(username) {
-		return "", USER_DOESNT_EXIST
+		return "", internal.ErrUserNotExists
 	}
 	// No session token found, need to create one
 	new_token := d.CreateSessionToken(username)
@@ -139,7 +163,7 @@ func (d *AuthDatabase) GetSessionToken(username string) (string, error) {
 		}
 	}
 
-	return "", nil
+	return "", internal.ErrUserNotExists
 }
 
 func (d *AuthDatabase) ValidateToken(session_token string) bool {
@@ -151,7 +175,7 @@ func (d *AuthDatabase) ValidateToken(session_token string) bool {
 func (d *AuthDatabase) CheckSessionTime(session_token string) bool {
 	current_time := int(time.Now().Unix())
 	time_inactive := current_time - d.Sessions[session_token].Last_login
-	return time_inactive <= SESSION_LIFETIME
+	return time_inactive <= internal.SESSION_LIFETIME
 }
 
 func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed bool) error {
@@ -159,7 +183,7 @@ func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed boo
 	if !is_alive {
 		delete(d.Sessions, session_token)
 		d.Save()
-		return INVALID_SESSION
+		return internal.ErrInvalidSession
 	}
 
 	if recently_accessed {
@@ -178,9 +202,9 @@ func (d *AuthDatabase) UpdateSession(session_token string, recently_accessed boo
 
 func (d *AuthDatabase) CreateUser(username string) error {
 	// Check for an existing user with the same name
-	for key, _ := range d.Users {
+	for key := range d.Users {
 		if key == username {
-			return USER_EXISTS
+			return internal.ErrUserExists
 		}
 	}
 
@@ -194,7 +218,7 @@ func (d *AuthDatabase) RemoveUser(username string) error {
 	// Check the user exists
 	_, ok := d.Users[username]
 	if !ok {
-		return USER_DOESNT_EXIST
+		return internal.ErrUserNotExists
 	}
 	delete(d.Users, username)
 
@@ -210,10 +234,10 @@ func (d *AuthDatabase) RemoveUser(username string) error {
 
 func (d *AuthDatabase) LoginUser(username string, password string) (string, error) {
 	if _, exists := d.Users[username]; !exists {
-		return "", USER_DOESNT_EXIST
+		return "", internal.ErrUserNotExists
 	}
 	if !d.CheckAuth(username, password) {
-		return "", INVALID_LOGIN
+		return "", internal.ErrInvalidLogin
 	}
 
 	session_token, err := d.GenerateNewSessionToken(username)
@@ -224,7 +248,7 @@ func (d *AuthDatabase) LoginUser(username string, password string) (string, erro
 func (d *AuthDatabase) GetUserFromToken(session_token string) (string, error) {
 	is_valid := d.ValidateToken(session_token)
 	if !is_valid {
-		return "", INVALID_SESSION
+		return "", internal.ErrInvalidSession
 	}
 
 	username := d.Sessions[session_token].Username
@@ -238,5 +262,5 @@ func (d *AuthDatabase) Save() error {
 		return err
 	}
 
-	return os.WriteFile(d.Filename, byteValue, 0644)
+	return d.FileOps.Write(d.Filename, byteValue, 0644)
 }
