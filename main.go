@@ -1,14 +1,11 @@
 package main
 
 import (
-	"net/http"
 	"os"
 
 	"github.com/charmbracelet/log"
+	"github.com/mnemosynefs/mnemo/internal/services"
 )
-
-var Mnemo *MnemoServer
-var Database *AuthDatabase
 
 func main() {
 	log.SetDefault(log.NewWithOptions(os.Stdout, log.Options{
@@ -16,16 +13,5 @@ func main() {
 		ReportCaller:    true,
 	}))
 
-	Mnemo = CreateMnemoServer(":8080")
-
-	setup_handler()
-
-	Mnemo.StartServer()
-}
-
-func setup_handler() {
-	Mnemo.RegisterHandler("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Welcome to Mnemo!\n"))
-	})
+	services.CreateServices(":8080", "./auth.json")
 }
