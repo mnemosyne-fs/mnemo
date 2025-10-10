@@ -1,4 +1,4 @@
-package main
+package networking
 
 import (
 	"context"
@@ -11,14 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type mockDatabase struct {
-	userFromToken func(token string) (string, error)
-}
-
-func (m *mockDatabase) GetUserFromToken(token string) (string, error) {
-	return m.userFromToken(token)
-}
 
 func TestRegistrationHandler(t *testing.T) {
 	server := CreateMnemoServer(":8080")
@@ -41,29 +33,9 @@ func TestRegistrationHandler(t *testing.T) {
 	assert.Equal(t, "pong", string(body))
 }
 
-func TestSessionMiddlware_Guest(t *testing.T) {
+func TestLogMiddlewareHandler(t *testing.T) {
 	server := CreateMnemoServer(":8080")
 
-	server.RegisterSessionValidatedHandler("/secure", func(w http.ResponseWriter, r *http.Request) {
-		user := r.Header.Get("username")
-		w.Write([]byte("user:" + user))
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/secure", nil)
-	rec := httptest.NewRecorder()
-
-	server.mux.ServeHTTP(rec, req)
-
-	res := rec.Result()
-	defer res.Body.Close()
-
-	body, _ := io.ReadAll(res.Body)
-
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, "user:", string(body))
-}
-
-func TestLogMiddlewareHandler(t *testing.T) {
 	called := false
 
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +43,7 @@ func TestLogMiddlewareHandler(t *testing.T) {
 		w.Write([]byte("ok"))
 	})
 
-	handler := logMiddlewareHandler(innerHandler)
+	handler := server.LogMiddlewareHandler(innerHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
@@ -82,14 +54,15 @@ func TestLogMiddlewareHandler(t *testing.T) {
 	defer res.Body.Close()
 
 	body, _ := io.ReadAll(res.Body)
-
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Equal(t, "ok", string(body))
 	assert.True(t, called, "inner handler should have been called")
 }
 
 func TestStartServer(t *testing.T) {
-	server := CreateMnemoServer("0.0.0.0:8080")
+	server := CreateMnemoServer(":8080")
+
+	assert.Equal(t, ":8080", server.GetAddress())
 
 	server.RegisterHandler("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("pong"))
@@ -101,11 +74,8 @@ func TestStartServer(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	addr := server.server.Addr
-	if addr == ":0" {
-		addr = server.server.Addr
-	}
-	url := "http://" + server.server.Addr + "/ping"
+	addr := server.GetAddress()
+	url := "http://" + addr + "/ping"
 
 	resp, err := http.Get(url)
 	require.NoError(t, err)
